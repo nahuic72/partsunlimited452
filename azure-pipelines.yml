@@ -1,25 +1,58 @@
-# File: azure-pipelines.yml
+
 trigger:
-- main
+- master
 
-resources:
-  repositories:
-    - repository: templates   # nombre de repositorio
-      type: github
-      name: nahuic72/templates
-      endpoint: github.com_nahuic72  # service connection de github
+pool:
+  vmImage: 'windows-2019'
 
-extends:
-  template: start.yml@templates  # esta palabra templates es el nombre del repository
-  parameters:
-    buildSteps:  
-      - bash: echo Test # Esto si pasa como un buildStep en el start.yml
-        displayName: succeed
-      - bash: echo "Test"
-        displayName: succeed
-      # El paso siguiente es rechazado lanzando un error de sintaxis YAML: Unexpected value 'CmdLine@2'
-      - task: CmdLine@2
-        inputs:
-          script: echo "Script Test"
-      # El paso siguiente es rechazado lanzando un error de sintaxis YAML: Unexpected value 'CmdLine@2'
-      - script: echo "Script Test"
+variables:
+  solution: '**/*.sln'
+  buildPlatform: 'Any CPU'
+  buildConfiguration: 'Release'
+
+stages:
+- stage: Build
+  displayName: Build stage
+  jobs:  
+  - job: Build
+    displayName: Build
+    pool:
+      vmImage: 'windows-2019' 
+    steps:
+    - task: NuGetToolInstaller@0
+
+    - task: NuGetCommand@2
+      inputs:
+        restoreSolution: '$(solution)'
+
+    - task: VSBuild@1
+      inputs:
+        solution: '$(solution)'
+        msbuildArgs: '/p:DeployOnBuild=true /p:WebPublishMethod=Package /p:PackageAsSingleFile=true /p:SkipInvalidConfigurations=true /p:PackageLocation="$(build.artifactStagingDirectory)"'
+        platform: '$(buildPlatform)'
+        configuration: '$(buildConfiguration)'
+
+    - task: CopyFiles@2
+      displayName: 'Copy Files'
+      inputs:
+        SourceFolder: '$(build.sourcesdirectory)'
+        Contents: '**/*.json'
+        TargetFolder: '$(build.artifactstagingdirectory)'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Artifact'
+      inputs:
+        PathtoPublish: '$(build.artifactstagingdirectory)'
+
+- stage: Deploy
+  jobs:
+  - job: Deploy
+    pool:
+      vmImage: 'windows-2019'
+    steps:
+    - task: DownloadBuildArtifacts@0
+      inputs:
+        buildType: 'current'
+        downloadType: 'single'
+        artifactName: 'drop'
+        downloadPath: '$(build.artifactstagingdirectory)'
